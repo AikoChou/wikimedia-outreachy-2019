@@ -11,7 +11,7 @@ python classify_statements_within_article.py -i input_file.txt  -m models/model.
 ```
 
 Where:
-- **'-i', '--input'**, is the input .txt file from which we read the titles, one per line.
+- **'-i', '--input'**, is the input .txt file from which we read the titles, one title per line. Lines starting with `#` will be ignored.
 
 - **'-o', '--out_dir'**, is the output directory where we save the results.
 
@@ -25,7 +25,7 @@ Where:
 
 ### System Requirement
 
-- Python 3.5
+- Python 3.5 or 3.6
 - Dependencies in `requirements.txt`
 
 
