@@ -19,7 +19,6 @@ K.set_session(K.tf.Session(config=K.tf.ConfigProto(intra_op_parallelism_threads=
 '''
     Set up the arguments and parse them.
 '''
-
 def get_arguments():
     parser = argparse.ArgumentParser(
         description='Use this script to determinee whether a statement needs a citation or not.')
@@ -35,7 +34,6 @@ def get_arguments():
 '''
     Retrieve the article of the given title
 '''
-
 def parse(API_URL, title):
     params = {
         "action": "query",
@@ -62,13 +60,12 @@ def parse(API_URL, title):
             -keys: section name, including MAIN_SECTION and other top level headdings
             -values: a list of paragraphs in the section
 '''
-def get_content_dict(text):
+def get_content_dict(text, heading_p):
     brace_open = False
     contents = {'MAIN_SECTION': []}
     section = 'MAIN_SECTION'
 
     entries = re.split("\n+", text)
-    heading_p = re.compile('(?<=^\={2})\s*\w+[\s|,|\w]*')
     for entry in entries:
         ## ignore {{...}} at the beginning e.g. infobox
         if entry[:2] == '{{':
@@ -102,10 +99,8 @@ def get_content_dict(text):
 
             **citation_or_not: True if <ref>...</ref> or {{citation_needed|...}} found in the sentence.
 '''
-
-def get_sentence_dict(content_dict):
+def get_sentence_dict(content_dict, sentences_p):
     sentence_dict = {}
-    sentences_p = re.compile('(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?)\s')
 
     for section in content_dict.keys():
         ## ignore sections which content dont need citations
@@ -190,11 +185,16 @@ def clean_text(text):
 
     text = text.strip().split()
     return raw_text, text
-'''
-
 
 '''
+    Construct input data for model
 
+    Return: -X: padded words vector, shape: (num_sentences, max_len)
+            -sections: array of sections vector, shape: (num_sentences, 1)
+            -y: citation label, shape: (num_sentences, 2)
+            -encoder: instance of LabelBinarizer()
+            -outstring: list of raw texts
+'''
 def construct_instance_reasons(statement_dict, section_dict_path, vocab_w2v_path, max_len=-1):
     # load the vocabulary
     vocab_w2v = pickle.load(open(vocab_w2v_path, 'rb'))
@@ -233,7 +233,6 @@ def construct_instance_reasons(statement_dict, section_dict_path, vocab_w2v_path
     return X, np.array(sections), y, encoder, outstring
 
 
-
 if __name__ == '__main__':
     p = get_arguments()
 
@@ -243,7 +242,7 @@ if __name__ == '__main__':
 
     # read the input file
     with open(p.input, 'r') as f:
-        titles = [l.strip() for l in f.readlines()]
+        titles = [l.strip() for l in f.readlines() if l[0] != '#']
     print("==========================================")
     print("INPUT: ", titles)
     print()
@@ -251,18 +250,32 @@ if __name__ == '__main__':
     API_URL = "https://en.wikipedia.org/w/api.php"
     outstr = "Text\tPredictProb[0]\tPredictProb[1]\tLabel\n"
 
+    # regex
+    redirect_p = re.compile('(?<=#REDIRECT\s\[\[).+(?=\]\])')
+    heading_p = re.compile('(?<=^\={2})\s*\w+[\s|,|\w]*')
+    sentences_p = re.compile('(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?)\s')
+
     # process title one by one
     for title in titles:
         print("Processing article: ", title)
 
         # retrieve the article
         article = str(parse(API_URL, title))
+        # check if it is a redirect page
+        redirect = re.search(redirect_p, article)
+        if redirect:
+            print("* Redirect to: ", redirect.group(0))
+            article = str(parse(API_URL, redirect.group(0)))
+        # check if it is a disambiguation page
+        if "{{disambiguation" in article:
+            print("* Sorry, {} is an ambiguous title.".format(title))
+            continue
 
         # get the content dictionary
-        content = get_content_dict(article)
+        content = get_content_dict(article, heading_p)
 
         # get the sentence dict dictionary
-        sentence_dict = get_sentence_dict(content)
+        sentence_dict = get_sentence_dict(content, sentences_p)
         print("  Number of section: ", len(sentence_dict))
 
         # construct input data for model
@@ -282,4 +295,5 @@ if __name__ == '__main__':
     output_path = p.out_dir + '/' + 'prediction_result.tsv'
     with open(output_path, 'wt') as f:
         f.write(outstr)
+    print()
     print("Save to file: ", output_path)
