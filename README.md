@@ -28,6 +28,9 @@ Where:
 - Python 3.5 or 3.6
 - Dependencies in `requirements.txt`
 
-
+Using following command to install dependencies:
+```
+pip install -r requirements.txt
+```
 
 
